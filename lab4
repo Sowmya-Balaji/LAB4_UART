@@ -1,0 +1,702 @@
+
+/* LAB4 - RGB LED Control using UART*/
+
+#include <stdint.h>
+#include "inc/tm4c123gh6pm.h"
+
+
+void GPIO_Init(void);
+void UART_Init(void);
+
+void UART_SendChar(char c);
+void UART_SendString(char *str);
+char UART_ReadChar(void);
+
+void delayMs(int n);
+
+void displayDigit(int digit, int value);
+void refreshDisplay(void);
+
+void setLED(int colour);
+
+
+
+int status = 1;       // 1 = RUNNING, 0 = PAUSED
+int colour = 1;       // 0 = OFF, 1-7 = colours
+int speed = 1;        // 1-8
+int ledState = 1;     // 1 = ON, 0 = OFF
+
+
+
+const unsigned char segCode[10] =
+{
+    0x3F,   // 0
+    0x06,   // 1
+    0x5B,   // 2
+    0x4F,   // 3
+    0x66,   // 4
+    0x6D,   // 5
+    0x7D,   // 6
+    0x07,   // 7
+    0x7F,   // 8
+    0x6F    // 9
+};
+
+
+#define LETTER_S 0x6D
+#define LETTER_r 0x50
+#define LETTER_P 0x73
+
+
+
+
+void GPIO_Init(void)
+{
+    // Enable clocks for Port A, B and F
+    SYSCTL_RCGCGPIO_R |= 0x23;
+
+    delayMs(1);
+
+
+
+    GPIO_PORTA_DIR_R |= 0xF0;
+    GPIO_PORTA_DEN_R |= 0xF0;
+
+
+    GPIO_PORTB_DIR_R |= 0xFF;
+    GPIO_PORTB_DEN_R |= 0xFF;
+
+
+
+
+    // Unlock PF0
+    GPIO_PORTF_LOCK_R = 0x4C4F434B;
+
+    // Allow changes to PF0
+    GPIO_PORTF_CR_R |= 0x01;
+
+
+    // PF1-PF3 = outputs
+    GPIO_PORTF_DIR_R |= 0x0E;
+
+
+    // PF0 and PF4 = inputs
+    GPIO_PORTF_DIR_R &= ~0x11;
+
+
+    // Digital enable
+    GPIO_PORTF_DEN_R |= 0x1F;
+
+
+    // Pull-up resistors
+    GPIO_PORTF_PUR_R |= 0x11;
+
+
+    // Initially OFF
+    GPIO_PORTA_DATA_R &= ~0xF0;
+    GPIO_PORTB_DATA_R = 0x00;
+    GPIO_PORTF_DATA_R &= ~0x0E;
+}
+
+
+void UART_Init(void)
+{
+    // Enable UART0 clock
+    SYSCTL_RCGCUART_R |= 0x01;
+
+    // Enable Port A clock
+    SYSCTL_RCGCGPIO_R |= 0x01;
+
+    delayMs(1);
+
+
+    // PA0 = RX
+    // PA1 = TX
+
+    GPIO_PORTA_AFSEL_R |= 0x03;
+
+
+    // UART0 function on PA0 and PA1
+    GPIO_PORTA_PCTL_R =
+        (GPIO_PORTA_PCTL_R & 0xFFFFFF00)
+        | 0x00000011;
+
+
+    // Digital enable
+    GPIO_PORTA_DEN_R |= 0x03;
+
+
+    // Disable UART before configuration
+    UART0_CTL_R &= ~0x01;
+
+
+    UART0_IBRD_R = 8;
+    UART0_FBRD_R = 44;
+
+
+    // 8-bit data
+    // No parity
+    // 1 stop bit
+    // FIFO enabled
+    UART0_LCRH_R = 0x70;
+
+
+    // Enable UART
+    // TX enable
+    // RX enable
+    UART0_CTL_R = 0x301;
+}
+
+
+
+void UART_SendChar(char c)
+{
+    // Wait while transmit FIFO is full
+    while(UART0_FR_R & 0x20)
+    {
+    }
+
+    UART0_DR_R = c;
+}
+
+void UART_SendString(char *str)
+{
+    while(*str)
+    {
+        UART_SendChar(*str);
+        str++;
+    }
+}
+
+
+char UART_ReadChar(void)
+{
+    // Wait until RX FIFO has data
+    while(UART0_FR_R & 0x10)
+    {
+    }
+
+    return (char)(UART0_DR_R & 0xFF);
+}
+
+
+void delayMs(int n)
+{
+    int i, j;
+
+    for(i = 0; i < n; i++)
+    {
+        for(j = 0; j < 3180; j++)
+        {
+        }
+    }
+}
+
+
+void setLED(int colour)
+{
+    // Turn OFF RGB LED first
+    GPIO_PORTF_DATA_R &= ~0x0E;
+
+
+    if(colour == 1)
+    {
+        // RED
+        GPIO_PORTF_DATA_R |= 0x02;
+    }
+
+    else if(colour == 2)
+    {
+        // GREEN
+        GPIO_PORTF_DATA_R |= 0x08;
+    }
+
+    else if(colour == 3)
+    {
+        // BLUE
+        GPIO_PORTF_DATA_R |= 0x04;
+    }
+
+    else if(colour == 4)
+    {
+        // YELLOW
+        GPIO_PORTF_DATA_R |= 0x0A;
+    }
+
+    else if(colour == 5)
+    {
+        // CYAN
+        GPIO_PORTF_DATA_R |= 0x0C;
+    }
+
+    else if(colour == 6)
+    {
+        // PURPLE
+        GPIO_PORTF_DATA_R |= 0x06;
+    }
+
+    else if(colour == 7)
+    {
+        // WHITE
+        GPIO_PORTF_DATA_R |= 0x0E;
+    }
+}
+
+
+
+
+void displayDigit(int digit, int value)
+{
+    unsigned char pattern;
+
+
+    // Turn OFF all digits
+    GPIO_PORTA_DATA_R &= ~0xF0;
+
+
+    // Select segment pattern
+    if(value >= 0 && value <= 9)
+    {
+        pattern = segCode[value];
+    }
+
+    else if(value == 10)
+    {
+        pattern = LETTER_S;
+    }
+
+    else if(value == 11)
+    {
+        pattern = LETTER_r;
+    }
+
+    else if(value == 12)
+    {
+        pattern = LETTER_P;
+    }
+
+    else
+    {
+        pattern = 0x00;
+    }
+
+
+    // Send pattern to segments
+    GPIO_PORTB_DATA_R = pattern;
+
+
+    // Select required digit
+    if(digit == 1)
+    {
+        GPIO_PORTA_DATA_R |= 0x10;
+    }
+
+    else if(digit == 2)
+    {
+        GPIO_PORTA_DATA_R |= 0x20;
+    }
+
+    else if(digit == 3)
+    {
+        GPIO_PORTA_DATA_R |= 0x40;
+    }
+
+    else if(digit == 4)
+    {
+        GPIO_PORTA_DATA_R |= 0x80;
+    }
+
+
+    // Keep digit ON briefly
+    delayMs(1);
+
+
+    // Turn digit OFF
+    GPIO_PORTA_DATA_R &= ~0xF0;
+}
+
+
+void refreshDisplay(void)
+{
+    // Digit 1 = r when running, P when paused
+
+    if(status == 1)
+    {
+        displayDigit(1, 11);
+    }
+    else
+    {
+        displayDigit(1, 12);
+    }
+
+
+    // Digit 2 = colour
+    displayDigit(2, colour);
+
+
+    // Digit 3 = S
+    displayDigit(3, 10);
+
+
+    // Digit 4 = speed
+    displayDigit(4, speed);
+}
+
+
+
+
+int main(void)
+{
+    int blinkCounter = 0;
+
+
+
+    int sw1;
+    int sw2;
+
+    int lastSW1 = 1;
+    int lastSW2 = 1;
+
+
+    int switchPending = 0;
+
+    // Approximately 50 ms debounce
+    int switchTimer = 0;
+
+
+
+    char command[10];
+
+    int index = 0;
+
+    char receivedChar;
+
+
+
+
+    GPIO_Init();
+    UART_Init();
+
+
+
+
+    UART_SendString("\r\nUART LED Controller\r\n");
+
+    UART_SendString("Commands:\r\n");
+
+    UART_SendString("rate\r\n");
+
+    UART_SendString("color\r\n");
+
+    UART_SendString("pause\r\n");
+
+    UART_SendString("run\r\n");
+
+    UART_SendString("> ");
+
+
+
+    while(1)
+    {
+
+
+
+        sw1 = (GPIO_PORTF_DATA_R & 0x10) ? 1 : 0;
+
+        sw2 = (GPIO_PORTF_DATA_R & 0x01) ? 1 : 0;
+
+
+
+
+        if(switchPending == 0)
+        {
+
+
+            if((sw1 == 0 && lastSW1 == 1) ||
+               (sw2 == 0 && lastSW2 == 1))
+            {
+                switchPending = 1;
+
+                switchTimer = 13;
+            }
+        }
+
+
+
+        if(switchPending == 1)
+        {
+            if(switchTimer > 0)
+            {
+                switchTimer--;
+            }
+
+
+
+            if(switchTimer == 0)
+            {
+                // Read switches again
+                sw1 = (GPIO_PORTF_DATA_R & 0x10) ? 1 : 0;
+
+                sw2 = (GPIO_PORTF_DATA_R & 0x01) ? 1 : 0;
+
+
+
+
+                if(sw1 == 0 && sw2 == 0)
+                {
+                    // Toggle RUN / PAUSE
+                    status = !status;
+
+
+                    if(status == 1)
+                    {
+                        UART_SendString("\r\nRunning\r\n");
+                    }
+                    else
+                    {
+                        UART_SendString("\r\nPaused\r\n");
+                    }
+                }
+
+
+
+                else if(sw1 == 0 && sw2 == 1)
+                {
+                    speed++;
+
+
+                    if(speed > 8)
+                    {
+                        speed = 1;
+                    }
+
+
+                    UART_SendString("\r\nRate increased\r\n");
+                }
+
+
+                else if(sw1 == 1 && sw2 == 0)
+                {
+                    colour++;
+
+
+                    if(colour > 7)
+                    {
+                        colour = 0;
+                    }
+
+
+                    UART_SendString("\r\nColor changed\r\n");
+                }
+
+
+                // Press has been processed
+                switchPending = 2;
+            }
+        }
+
+
+
+        if(switchPending == 2)
+        {
+            // Read switches
+            sw1 = (GPIO_PORTF_DATA_R & 0x10) ? 1 : 0;
+
+            sw2 = (GPIO_PORTF_DATA_R & 0x01) ? 1 : 0;
+
+
+            // Both released
+            if(sw1 == 1 && sw2 == 1)
+            {
+                switchPending = 0;
+            }
+        }
+
+
+        // Save current states
+        lastSW1 = sw1;
+        lastSW2 = sw2;
+
+
+
+        // RX FIFO NOT EMPTY
+        if(!(UART0_FR_R & 0x10))
+        {
+            receivedChar = UART_ReadChar();
+
+
+            if(receivedChar == '\r' ||
+               receivedChar == '\n')
+            {
+                // Finish string
+                command[index] = '\0';
+
+
+                // Move to next line
+                UART_SendString("\r\n");
+
+
+
+
+                if(command[0] == 'r' &&
+                   command[1] == 'a' &&
+                   command[2] == 't' &&
+                   command[3] == 'e' &&
+                   command[4] == '\0')
+                {
+                    speed++;
+
+
+                    if(speed > 8)
+                    {
+                        speed = 1;
+                    }
+
+
+                    UART_SendString("Rate increased\r\n");
+                }
+
+
+
+
+                else if(command[0] == 'c' &&
+                        command[1] == 'o' &&
+                        command[2] == 'l' &&
+                        command[3] == 'o' &&
+                        command[4] == 'r' &&
+                        command[5] == '\0')
+                {
+                    colour++;
+
+
+                    if(colour > 7)
+                    {
+                        colour = 0;
+                    }
+
+
+                    UART_SendString("Color changed\r\n");
+                }
+
+
+
+
+                else if(command[0] == 'p' &&
+                        command[1] == 'a' &&
+                        command[2] == 'u' &&
+                        command[3] == 's' &&
+                        command[4] == 'e' &&
+                        command[5] == '\0')
+                {
+                    status = 0;
+
+                    ledState = 1;
+
+
+                    UART_SendString("Paused\r\n");
+                }
+
+
+
+
+                else if(command[0] == 'r' &&
+                        command[1] == 'u' &&
+                        command[2] == 'n' &&
+                        command[3] == '\0')
+                {
+                    status = 1;
+
+
+                    UART_SendString("Running\r\n");
+                }
+
+
+
+
+                else if(index != 0)
+                {
+                    UART_SendString("Invalid command\r\n");
+                }
+
+
+                // Reset command buffer
+                index = 0;
+
+
+                // New prompt
+                UART_SendString("> ");
+            }
+
+
+
+            else if(index < 9)
+            {
+                // Store character
+                command[index] = receivedChar;
+
+                index++;
+
+
+                // Echo character
+                UART_SendChar(receivedChar);
+            }
+        }
+
+
+
+
+        if(status == 1)
+        {
+            /*
+             * Approximately 4 ms per complete loop.
+             *
+             * Four displayDigit() calls × approximately
+             * 1 ms each.
+             */
+
+            blinkCounter += 4;
+
+
+            // Check blink period
+            if(blinkCounter >= (1000 / speed))
+            {
+                blinkCounter = 0;
+
+                ledState = !ledState;
+            }
+
+
+            // Colour 0 = OFF
+            if(colour == 0)
+            {
+                setLED(0);
+            }
+
+            else if(ledState == 1)
+            {
+                setLED(colour);
+            }
+
+            else
+            {
+                setLED(0);
+            }
+        }
+
+
+
+
+        else
+        {
+            ledState = 1;
+
+            // Keep selected colour ON
+            setLED(colour);
+        }
+
+
+
+
+        refreshDisplay();
+    }
+}
