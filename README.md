@@ -5,9 +5,11 @@ Sowmya Balaji, SR no. 28488
 Electronic Systems Engineering, IISc
 
 1. Objective
+
 The objective of this assignment is to extend the finite state machine developed in Lab 3 so that the global state of the machine—comprising Status (Running/Paused), Colour, and Blink Speed—can be controlled not only through onboard switches but also through commands entered on a UART console. The RGB LED and 4-digit multiplexed 7-segment display continue to reflect the current global state regardless of which input source triggered the change.
 
 2. Hardware & GPIO Configuration
+
 The experiment utilizes the TM4C123GH6PM LaunchPad and the EduARM4 addon board. Onboard switches SW1 (PF4) and SW2 (PF0) remain configured as inputs to detect user button presses. In addition, UART0 is configured to communicate with a PC terminal over the USB-to-serial connection, allowing the user to type commands into a serial console. The microcontroller's outputs continue to drive the RGB LED and the 4-digit multiplexed 7-segment display on the addon board.
 
 3. State Machine Design & Switch + UART Control
